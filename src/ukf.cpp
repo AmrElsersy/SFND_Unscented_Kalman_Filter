@@ -7,29 +7,33 @@ using Eigen::VectorXd;
 /**
  * Initializes Unscented Kalman filter
  */
+
 UKF::UKF() {
+
   // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = true;
+  use_laser_ = false;
 
   // if this is false, radar measurements will be ignored (except during init)
   use_radar_ = true;
 
   // initial state vector
   x_ = VectorXd(5);
+  x_.fill(0.0);
 
   // initial covariance matrix
   P_ = MatrixXd(5, 5);
-
-  x_.fill(0.0);
-  P_.fill(0.0);
+  P_ << 1, 0, 0, 0, 0,
+        0, 1, 0, 0, 0,
+        0, 0, 1, 0, 0,
+        0, 0, 0, 1, 0,
+        0, 0, 0, 0, 1;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 1.3;
+  std_a_ = 1.5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 1.5;
+  std_yawdd_ = 2;
   
-
   /**
    * DO NOT MODIFY measurement noise values below.
    * These are provided by the sensor manufacturer.
@@ -58,26 +62,31 @@ UKF::UKF() {
    * TODO: Complete the initialization. See ukf.h for other member properties.
    * Hint: one or more values initialized above might be wildly off...
    */
-  
+
+  // initially set to false, set to true in first call of ProcessMeasurement
+  is_initialized_ = false;
+
+  // State dimension
   n_x_ = 5;
 
+  // Augmented state dimension
   n_aug_ = 7;
 
-  Xsig_pred_ = MatrixXd(n_x_ , 2* n_aug_ + 1);
-
+  // Sigma point spreading parameter
   lambda_ = 3 - n_x_;
 
-  // weights
-  weights_ = VectorXd(2*n_aug_+1);
-  weights_(0) = lambda_/(lambda_+n_aug_);
-  for (int i=1; i<2*n_aug_+1; ++i)
-    weights_(i) = 1/2*(lambda_+n_aug_);
+  // predicted sigma points matrix
+  Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);  
+  Xsig_pred_.fill(0.0);
 
-  time_us_ = 0; // start
-  NIS_laser_ = 0;
-  NIS_radar_ = 0;
+  // last step time in us
+  time_us_ = 0.0;
 
-  is_initialized_ = false;
+  // Weights of sigma points
+  weights_ = VectorXd(2 * n_aug_ + 1);
+  weights_.fill(0.5 / (lambda_ + n_aug_));
+  weights_(0) = lambda_ / (lambda_ + n_aug_);
+
 }
 
 UKF::~UKF() {}
@@ -160,7 +169,7 @@ void UKF::Prediction(double delta_t) {
 
 
   // =============== Augumentation ==========================
-  lambda_ = 3 - n_aug_;
+  lambda_ = 3 - n_x_;
 
   // Sigma points with new dimentions for augumentation
   MatrixXd Xsig_aug_ = MatrixXd(n_aug_, 2*n_aug_+1);
@@ -208,8 +217,8 @@ void UKF::Prediction(double delta_t) {
 
     // avoid division by zero
     if (fabs(yawd) > 0.001) {
-        px_p = p_x + v/yawd * ( sin (yaw + yawd*delta_t) - sin(yaw));
-        py_p = p_y + v/yawd * ( cos(yaw) - cos(yaw+yawd*delta_t) );
+        px_p = p_x + (v/yawd) * ( sin (yaw + yawd*delta_t) - sin(yaw));
+        py_p = p_y + (v/yawd) * ( cos(yaw) - cos(yaw+yawd*delta_t) );
     } else {
         px_p = p_x + v*delta_t*cos(yaw);
         py_p = p_y + v*delta_t*sin(yaw);
@@ -239,7 +248,7 @@ void UKF::Prediction(double delta_t) {
   VectorXd Xsig_mean = VectorXd(n_x_);
   Xsig_mean.fill(0.0);
   for (int i =0; i < 2*n_aug_+1; i++)
-    Xsig_mean = Xsig_mean +  weights_(i) * Xsig_pred_.col(i);
+    Xsig_mean +=  weights_(i) * Xsig_pred_.col(i);
 
   // predicted state covariance matrix
   MatrixXd P(n_x_,n_x_);
